@@ -36,12 +36,27 @@ import {
 import toast from "react-hot-toast";
 
 const ReportsPage: React.FC = () => {
-  const { accounts, transactions, loading } = useData();
+  const { accounts = [], transactions = [], loading } = useData();
   const [reportType, setReportType] = useState<"monthly" | "yearly">("monthly");
   const [selectedPeriod, setSelectedPeriod] = useState(new Date());
   const [downloading, setDownloading] = useState(false);
 
   const reportData = useMemo(() => {
+    // Early return with safe defaults if no accounts or transactions
+    if (!accounts.length || !transactions.length) {
+      return {
+        totalIncome: 0,
+        totalExpenses: 0,
+        netSavings: 0,
+        transactionCount: 0,
+        categoryData: [],
+        accountBreakdown: [],
+        trendData: [],
+        periodStart: new Date(),
+        periodEnd: new Date(),
+      };
+    }
+
     const periodStart =
       reportType === "monthly"
         ? startOfMonth(selectedPeriod)
@@ -184,7 +199,7 @@ const ReportsPage: React.FC = () => {
   };
 
   const downloadCSV = () => {
-    if (transactions.length === 0) {
+    if (!transactions || transactions.length === 0) {
       toast.error("No transactions to export");
       return;
     }
@@ -202,6 +217,11 @@ const ReportsPage: React.FC = () => {
     const periodTransactions = transactions.filter(
       (t) => t.date >= periodStart && t.date <= periodEnd
     );
+
+    if (periodTransactions.length === 0) {
+      toast.error("No transactions in selected period to export");
+      return;
+    }
 
     const csvContent = [
       ["Date", "Type", "Amount", "Category", "Description", "Account"],
@@ -249,7 +269,7 @@ const ReportsPage: React.FC = () => {
   }
 
   // Show empty state if no accounts
-  if (accounts.length === 0) {
+  if (!accounts || accounts.length === 0) {
     return (
       <div className="text-center py-12">
         <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -272,6 +292,30 @@ const ReportsPage: React.FC = () => {
     );
   }
 
+  // Show empty state if no transactions
+  if (!transactions || transactions.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <FileText size={32} className="text-gray-400" />
+        </div>
+        <h3 className="text-lg font-medium text-gray-900 mb-2">
+          No transactions found
+        </h3>
+        <p className="text-gray-600 mb-6">
+          You need to add some transactions before generating reports.
+        </p>
+        <Link
+          to="/transactions"
+          className="bg-black text-white px-6 py-2 rounded-lg font-bold hover:bg-gray-800 transition-colors inline-flex items-center"
+        >
+          <Plus size={16} className="mr-2" />
+          Add Your First Transaction
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 lg:space-y-8">
       {/* Header */}
@@ -288,7 +332,7 @@ const ReportsPage: React.FC = () => {
         <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 w-full sm:w-auto">
           <button
             onClick={downloadCSV}
-            disabled={transactions.length === 0}
+            disabled={!transactions || transactions.length === 0}
             className="bg-gray-600 text-white px-4 lg:px-6 py-2 lg:py-3 rounded-lg font-bold hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
           >
             <Download size={16} className="mr-2" />
@@ -342,8 +386,8 @@ const ReportsPage: React.FC = () => {
             <div className="flex items-center text-gray-600">
               <Filter size={16} className="mr-2 flex-shrink-0" />
               <span className="text-sm">
-                Period: {format(reportData.periodStart, "MMM d")} -{" "}
-                {format(reportData.periodEnd, "MMM d, yyyy")}
+                Period: {format(reportData.periodStart || new Date(), "MMM d")}{" "}
+                - {format(reportData.periodEnd || new Date(), "MMM d, yyyy")}
               </span>
             </div>
           </div>
@@ -462,7 +506,7 @@ const ReportsPage: React.FC = () => {
             <h3 className="text-lg font-bold text-gray-900 mb-4">
               Expense Breakdown
             </h3>
-            {reportData.categoryData.length > 0 ? (
+            {reportData.categoryData && reportData.categoryData.length > 0 ? (
               <ResponsiveContainer
                 width="100%"
                 height={250}
@@ -485,7 +529,7 @@ const ReportsPage: React.FC = () => {
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(value) => `₹${value.toLocaleString()}`}
+                    formatter={(value) => `₹${Number(value).toLocaleString()}`}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -509,92 +553,117 @@ const ReportsPage: React.FC = () => {
             <h3 className="text-lg font-bold text-gray-900 mb-4">
               {reportType === "monthly" ? "Daily" : "Monthly"} Trend
             </h3>
-            <ResponsiveContainer width="100%" height={250} className="lg:h-80">
-              <LineChart data={reportData.trendData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey={reportType === "monthly" ? "date" : "month"} />
-                <YAxis formatter={(value) => `₹${value.toLocaleString()}`} />
-                <Tooltip formatter={(value) => `₹${value.toLocaleString()}`} />
-                <Line
-                  type="monotone"
-                  dataKey="income"
-                  stroke="#22c55e"
-                  strokeWidth={2}
-                  name="Income"
-                />
-                <Line
-                  type="monotone"
-                  dataKey="expenses"
-                  stroke="#ef4444"
-                  strokeWidth={2}
-                  name="Expenses"
-                />
-                <Line
-                  type="monotone"
-                  dataKey="net"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  name="Net"
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            {reportData.trendData && reportData.trendData.length > 0 ? (
+              <ResponsiveContainer
+                width="100%"
+                height={250}
+                className="lg:h-80"
+              >
+                <LineChart data={reportData.trendData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey={reportType === "monthly" ? "date" : "month"}
+                  />
+                  <YAxis
+                    formatter={(value) => `₹${Number(value).toLocaleString()}`}
+                  />
+                  <Tooltip
+                    formatter={(value) => `₹${Number(value).toLocaleString()}`}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="income"
+                    stroke="#22c55e"
+                    strokeWidth={2}
+                    name="Income"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="expenses"
+                    stroke="#ef4444"
+                    strokeWidth={2}
+                    name="Expenses"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="net"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    name="Net"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-48 lg:h-64 text-gray-500">
+                <div className="text-center">
+                  <p className="mb-2">No trend data available</p>
+                  <Link
+                    to="/transactions"
+                    className="text-blue-600 hover:text-blue-700 text-sm"
+                  >
+                    Add transactions to see trends
+                  </Link>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Account Breakdown */}
-        {reportData.accountBreakdown.length > 0 && (
-          <div>
-            <h3 className="text-lg font-bold text-gray-900 mb-4">
-              Account-wise Summary
-            </h3>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">
-                      Account
-                    </th>
-                    <th className="text-right py-3 px-4 font-medium text-gray-700">
-                      Income
-                    </th>
-                    <th className="text-right py-3 px-4 font-medium text-gray-700">
-                      Expenses
-                    </th>
-                    <th className="text-right py-3 px-4 font-medium text-gray-700">
-                      Net
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reportData.accountBreakdown.map((account, index) => (
-                    <tr key={index} className="border-b border-gray-100">
-                      <td className="py-3 px-4 font-medium text-gray-900">
-                        {account.account}
-                      </td>
-                      <td className="py-3 px-4 text-right text-green-600">
-                        ₹{account.income.toLocaleString()}
-                      </td>
-                      <td className="py-3 px-4 text-right text-red-600">
-                        ₹{account.expenses.toLocaleString()}
-                      </td>
-                      <td
-                        className={`py-3 px-4 text-right font-medium ${
-                          account.net >= 0 ? "text-green-600" : "text-red-600"
-                        }`}
-                      >
-                        ₹{Math.abs(account.net).toLocaleString()}
-                        {account.net >= 0 ? " ↑" : " ↓"}
-                      </td>
+        {reportData.accountBreakdown &&
+          reportData.accountBreakdown.length > 0 && (
+            <div>
+              <h3 className="text-lg font-bold text-gray-900 mb-4">
+                Account-wise Summary
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left py-3 px-4 font-medium text-gray-700">
+                        Account
+                      </th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-700">
+                        Income
+                      </th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-700">
+                        Expenses
+                      </th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-700">
+                        Net
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {reportData.accountBreakdown.map((account, index) => (
+                      <tr key={index} className="border-b border-gray-100">
+                        <td className="py-3 px-4 font-medium text-gray-900">
+                          {account.account}
+                        </td>
+                        <td className="py-3 px-4 text-right text-green-600">
+                          ₹{account.income.toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-right text-red-600">
+                          ₹{account.expenses.toLocaleString()}
+                        </td>
+                        <td
+                          className={`py-3 px-4 text-right font-medium ${
+                            account.net >= 0 ? "text-green-600" : "text-red-600"
+                          }`}
+                        >
+                          ₹{Math.abs(account.net).toLocaleString()}
+                          {account.net >= 0 ? " ↑" : " ↓"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
         {/* Category Details */}
-        {reportData.categoryData.length > 0 && (
+        {reportData.categoryData && reportData.categoryData.length > 0 && (
           <div>
             <h3 className="text-lg font-bold text-gray-900 mb-4">
               Category Breakdown
