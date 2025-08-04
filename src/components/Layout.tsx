@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import React, { useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import {
   LayoutDashboard,
   CreditCard,
@@ -12,9 +12,9 @@ import {
   LogOut,
   Menu,
   X,
-  User
-} from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+  User,
+} from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -27,18 +27,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const menuItems = [
-    { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { path: '/transactions', icon: CreditCard, label: 'Transactions' },
-    { path: '/upload-bill', icon: Upload, label: 'Upload Bill' },
-    { path: '/reports', icon: FileText, label: 'Reports' },
-    { path: '/analysis', icon: BarChart3, label: 'Analysis' },
-    { path: '/investments', icon: TrendingUp, label: 'Investments' },
-    { path: '/settings', icon: Settings, label: 'Settings' }
+    { path: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+    { path: "/transactions", icon: CreditCard, label: "Transactions" },
+    { path: "/upload-bill", icon: Upload, label: "Upload Bill" },
+    { path: "/reports", icon: FileText, label: "Reports" },
+    { path: "/analysis", icon: BarChart3, label: "Analysis" },
+    { path: "/investments", icon: TrendingUp, label: "Investments" },
+    { path: "/settings", icon: Settings, label: "Settings" },
   ];
 
   const handleLogout = async () => {
     await logout();
-    navigate('/');
+    navigate("/");
   };
 
   return (
@@ -52,9 +52,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       )}
 
       {/* Sidebar */}
-      <div className={`fixed left-0 top-0 bottom-0 w-64 bg-white shadow-lg z-50 transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 lg:z-auto ${
-        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-      }`}>
+      <div
+        className={`fixed left-0 top-0 bottom-0 w-64 bg-white shadow-lg z-50 transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 lg:z-auto ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
         <div className="p-6 border-b">
           <div className="flex items-center justify-between">
             <h1 className="text-xl font-bold text-gray-900">Finance App</h1>
@@ -71,7 +73,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           {menuItems.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
-            
+
             return (
               <Link
                 key={item.path}
@@ -79,8 +81,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 onClick={() => setSidebarOpen(false)}
                 className={`flex items-center px-4 py-3 rounded-lg transition-all duration-200 ${
                   isActive
-                    ? 'bg-black text-white'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    ? "bg-black text-white"
+                    : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
                 }`}
               >
                 <Icon size={20} className="mr-3 flex-shrink-0" />
@@ -97,7 +99,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-gray-900 truncate">
-                {user?.displayName || 'User'}
+                {user?.displayName || "User"}
               </p>
               <p className="text-xs text-gray-500 truncate">{user?.email}</p>
             </div>
@@ -125,7 +127,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </button>
             <div className="hidden lg:block">
               <h2 className="text-xl lg:text-2xl font-bold text-gray-900">
-                {menuItems.find(item => item.path === location.pathname)?.label || 'Dashboard'}
+                {menuItems.find((item) => item.path === location.pathname)
+                  ?.label || "Dashboard"}
               </h2>
             </div>
             <div className="lg:hidden">
@@ -135,9 +138,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 p-4 lg:p-8 overflow-x-hidden">
-          {children}
-        </main>
+        <main className="flex-1 p-4 lg:p-8 overflow-x-hidden">{children}</main>
       </div>
     </div>
   );

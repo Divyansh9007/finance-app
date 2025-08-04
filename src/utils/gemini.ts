@@ -21,7 +21,8 @@ const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
 // Function for receipt data extraction
 export const extractReceiptData = async (imageFile: File): Promise<ExtractedReceiptData> => {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-pro-vision" });
+    // Updated model name - gemini-pro-vision is deprecated
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     
     const imageData = await fileToGenerativePart(imageFile);
     
@@ -34,16 +35,44 @@ export const extractReceiptData = async (imageFile: File): Promise<ExtractedRece
       - items: array of item names if visible
       
       Return only valid JSON, no other text. If you cannot detect a field, set it to null.
+      
+      Example format:
+      {
+        "vendor": "Store Name",
+        "amount": 150.50,
+        "date": "2024-01-15",
+        "category": "Food & Dining",
+        "items": ["Item 1", "Item 2"]
+      }
     `;
     
     const result = await model.generateContent([prompt, imageData]);
-    const response = await result.response;
+    const response = result.response;
+    
+    // Check if response is valid
+    if (!response) {
+      throw new Error('No response from Gemini API');
+    }
+    
     const text = response.text();
+    
+    if (!text || text.trim() === '') {
+      throw new Error('Empty response from Gemini API');
+    }
     
     // Clean the response text to extract JSON
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+      const extractedData = JSON.parse(jsonMatch[0]);
+      
+      // Validate and clean the extracted data
+      return {
+        vendor: extractedData.vendor || null,
+        amount: typeof extractedData.amount === 'number' ? extractedData.amount : null,
+        date: extractedData.date || null,
+        category: extractedData.category || 'Others',
+        items: Array.isArray(extractedData.items) ? extractedData.items : []
+      };
     }
     
     throw new Error('No valid JSON found in response');
@@ -66,7 +95,8 @@ export const generateFinancialInsights = async (
   accounts: any[]
 ): Promise<AnalysisInsight[]> => {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    // Updated model name - gemini-pro is deprecated
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     
     // Prepare data summary for analysis
     const totalIncome = transactions
@@ -100,87 +130,168 @@ export const generateFinancialInsights = async (
       - recommendation: actionable advice (optional)
       
       Focus on spending patterns, savings rate, budget optimization, and financial health.
-      Return as JSON array: [{"type": "...", "title": "...", "message": "...", "recommendation": "..."}]
+      Return as JSON array only, no additional text:
+      [{"type": "positive", "title": "Example", "message": "Example message", "recommendation": "Example recommendation"}]
     `;
     
     const result = await model.generateContent(prompt);
-    const response = await result.response;
+    const response = result.response;
+    
+    // Check if response is valid
+    if (!response) {
+      throw new Error('No response from Gemini API');
+    }
+    
     const text = response.text();
+    
+    if (!text || text.trim() === '') {
+      throw new Error('Empty response from Gemini API');
+    }
     
     // Clean the response text to extract JSON
     const jsonMatch = text.match(/\[[\s\S]*\]/);
     if (jsonMatch) {
-      const insights = JSON.parse(jsonMatch[0]);
-      return insights.map((insight: any) => ({
-        ...insight,
-        type: insight.type || 'info'
-      }));
-    }
-    
-    throw new Error('No valid JSON found in response');
-  } catch (error) {
-    console.error('Error generating financial insights:', error);
-    
-    // Fallback to basic insights if API fails
-    const savingsRate = transactions.length > 0 
-      ? ((transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0) - 
-          transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0)) / 
-         transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0)) * 100
-      : 0;
-    
-    const insights: AnalysisInsight[] = [];
-    
-    if (savingsRate > 20) {
-      insights.push({
-        type: 'positive',
-        title: 'Excellent Savings Rate',
-        message: `Your savings rate is ${savingsRate.toFixed(1)}%. You're doing great at managing your finances!`,
-        recommendation: 'Consider investing your surplus savings for better returns.'
-      });
-    } else if (savingsRate < 10) {
-      insights.push({
-        type: 'warning',
-        title: 'Low Savings Rate',
-        message: `Your savings rate is ${savingsRate.toFixed(1)}%. This is below the recommended 20%.`,
-        recommendation: 'Review your expenses and identify areas where you can cut back.'
-      });
-    }
-    
-    if (transactions.length > 0) {
-      const topExpenseCategory = Object.entries(
-        transactions
-          .filter(t => t.type === 'expense')
-          .reduce((acc, t) => {
-            acc[t.category] = (acc[t.category] || 0) + t.amount;
-            return acc;
-          }, {} as Record<string, number>)
-      ).sort(([,a], [,b]) => b - a)[0];
-      
-      if (topExpenseCategory) {
-        insights.push({
-          type: 'info',
-          title: 'Top Spending Category',
-          message: `Your highest spending category is ${topExpenseCategory[0]} with ₹${topExpenseCategory[1].toLocaleString()}.`,
-          recommendation: 'Monitor this category closely and look for optimization opportunities.'
-        });
+      try {
+        const insights = JSON.parse(jsonMatch[0]);
+        
+        // Validate insights structure
+        if (!Array.isArray(insights)) {
+          throw new Error('Invalid insights format - not an array');
+        }
+        
+        return insights.map((insight: any) => ({
+          type: insight.type || 'info',
+          title: insight.title || 'Financial Insight',
+          message: insight.message || 'No message available',
+          recommendation: insight.recommendation || undefined
+        }));
+      } catch (parseError) {
+        console.error('Error parsing insights JSON:', parseError);
+        throw new Error('Failed to parse insights JSON');
       }
     }
     
-    return insights;
+    throw new Error('No valid JSON array found in response');
+  } catch (error) {
+    console.error('Error generating financial insights:', error);
+    
+    // Enhanced fallback insights
+    return generateFallbackInsights(transactions);
   }
 };
 
-async function fileToGenerativePart(file: File): Promise<any> {
-  const base64EncodedDataPromise = new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result?.toString().split(',')[1]);
-    reader.readAsDataURL(file);
-  });
+// Enhanced fallback insights function
+function generateFallbackInsights(transactions: any[]): AnalysisInsight[] {
+  const insights: AnalysisInsight[] = [];
   
-  return {
-    inlineData: {
-      data: await base64EncodedDataPromise,
-      mimeType: file.type
-    }
-  };
+  if (transactions.length === 0) {
+    insights.push({
+      type: 'info',
+      title: 'Getting Started',
+      message: 'Start adding transactions to get personalized financial insights.',
+      recommendation: 'Add your income and expense transactions to see detailed analysis.'
+    });
+    return insights;
+  }
+  
+  const totalIncome = transactions
+    .filter(t => t.type === 'income')
+    .reduce((sum, t) => sum + t.amount, 0);
+  
+  const totalExpenses = transactions
+    .filter(t => t.type === 'expense')
+    .reduce((sum, t) => sum + t.amount, 0);
+  
+  const savingsRate = totalIncome > 0 
+    ? ((totalIncome - totalExpenses) / totalIncome) * 100
+    : 0;
+  
+  // Savings rate analysis
+  if (savingsRate > 20) {
+    insights.push({
+      type: 'positive',
+      title: 'Excellent Savings Rate',
+      message: `Your savings rate is ${savingsRate.toFixed(1)}%. You're doing great at managing your finances!`,
+      recommendation: 'Consider investing your surplus savings for better returns.'
+    });
+  } else if (savingsRate < 10 && savingsRate >= 0) {
+    insights.push({
+      type: 'warning',
+      title: 'Low Savings Rate',
+      message: `Your savings rate is ${savingsRate.toFixed(1)}%. This is below the recommended 20%.`,
+      recommendation: 'Review your expenses and identify areas where you can cut back.'
+    });
+  } else if (savingsRate < 0) {
+    insights.push({
+      type: 'warning',
+      title: 'Spending More Than Earning',
+      message: `You're spending ₹${Math.abs(totalIncome - totalExpenses).toLocaleString()} more than you earn.`,
+      recommendation: 'Urgently review your expenses and create a budget to avoid debt.'
+    });
+  }
+  
+  // Category analysis
+  const expenseCategories = transactions
+    .filter(t => t.type === 'expense')
+    .reduce((acc, t) => {
+      acc[t.category] = (acc[t.category] || 0) + t.amount;
+      return acc;
+    }, {} as Record<string, number>);
+  
+  const topExpenseEntry = Object.entries(expenseCategories)
+    .sort(([,a], [,b]) => b - a)[0];
+  
+  if (topExpenseEntry && totalExpenses > 0) {
+    const [category, amount] = topExpenseEntry;
+    const percentage = ((amount / totalExpenses) * 100).toFixed(1);
+    
+    insights.push({
+      type: 'info',
+      title: 'Top Spending Category',
+      message: `${category} accounts for ${percentage}% of your expenses (₹${amount.toLocaleString()}).`,
+      recommendation: 'Monitor this category closely and look for optimization opportunities.'
+    });
+  }
+  
+  // Transaction frequency
+  if (transactions.length < 5) {
+    insights.push({
+      type: 'info',
+      title: 'More Data Needed',
+      message: 'Add more transactions to get better financial insights and patterns.',
+      recommendation: 'Try to record all your income and expenses for comprehensive analysis.'
+    });
+  }
+  
+  return insights;
+}
+
+async function fileToGenerativePart(file: File): Promise<any> {
+  try {
+    const base64EncodedDataPromise = new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result?.toString();
+        if (result) {
+          resolve(result.split(',')[1]);
+        } else {
+          reject(new Error('Failed to read file'));
+        }
+      };
+      reader.onerror = () => reject(new Error('File reading failed'));
+      reader.readAsDataURL(file);
+    });
+    
+    const base64Data = await base64EncodedDataPromise;
+    
+    return {
+      inlineData: {
+        data: base64Data,
+        mimeType: file.type
+      }
+    };
+  } catch (error) {
+    console.error('Error converting file to generative part:', error);
+    throw new Error('Failed to process image file');
+  }
 }

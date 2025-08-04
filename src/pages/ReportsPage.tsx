@@ -41,102 +41,7 @@ const ReportsPage: React.FC = () => {
   const [selectedPeriod, setSelectedPeriod] = useState(new Date());
   const [downloading, setDownloading] = useState(false);
 
-  const reportData = useMemo(() => {
-    // Early return with safe defaults if no accounts or transactions
-    if (!accounts.length || !transactions.length) {
-      return {
-        totalIncome: 0,
-        totalExpenses: 0,
-        netSavings: 0,
-        transactionCount: 0,
-        categoryData: [],
-        accountBreakdown: [],
-        trendData: [],
-        periodStart: new Date(),
-        periodEnd: new Date(),
-      };
-    }
-
-    const periodStart =
-      reportType === "monthly"
-        ? startOfMonth(selectedPeriod)
-        : startOfYear(selectedPeriod);
-
-    const periodEnd =
-      reportType === "monthly"
-        ? endOfMonth(selectedPeriod)
-        : endOfYear(selectedPeriod);
-
-    const periodTransactions = transactions.filter(
-      (t) => t.date >= periodStart && t.date <= periodEnd
-    );
-
-    const totalIncome = periodTransactions
-      .filter((t) => t.type === "income")
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const totalExpenses = periodTransactions
-      .filter((t) => t.type === "expense")
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const netSavings = totalIncome - totalExpenses;
-
-    // Category breakdown
-    const expenseCategories = periodTransactions
-      .filter((t) => t.type === "expense")
-      .reduce((acc, t) => {
-        acc[t.category] = (acc[t.category] || 0) + t.amount;
-        return acc;
-      }, {} as Record<string, number>);
-
-    const categoryData = Object.entries(expenseCategories).map(
-      ([category, amount]) => ({
-        name: category,
-        value: amount,
-        percentage:
-          totalExpenses > 0 ? ((amount / totalExpenses) * 100).toFixed(1) : "0",
-      })
-    );
-
-    // Account-wise breakdown
-    const accountBreakdown = accounts.map((account) => {
-      const accountTransactions = periodTransactions.filter(
-        (t) => t.accountId === account.id
-      );
-      const accountIncome = accountTransactions
-        .filter((t) => t.type === "income")
-        .reduce((sum, t) => sum + t.amount, 0);
-      const accountExpenses = accountTransactions
-        .filter((t) => t.type === "expense")
-        .reduce((sum, t) => sum + t.amount, 0);
-
-      return {
-        account: account.name,
-        income: accountIncome,
-        expenses: accountExpenses,
-        net: accountIncome - accountExpenses,
-      };
-    });
-
-    // Daily/Monthly trend
-    const trendData =
-      reportType === "monthly"
-        ? getDailyTrend(periodTransactions, periodStart, periodEnd)
-        : getMonthlyTrend(transactions, selectedPeriod);
-
-    return {
-      totalIncome,
-      totalExpenses,
-      netSavings,
-      transactionCount: periodTransactions.length,
-      categoryData,
-      accountBreakdown,
-      trendData,
-      periodStart,
-      periodEnd,
-    };
-  }, [transactions, accounts, reportType, selectedPeriod]);
-
+  // Helper functions defined before useMemo
   const getDailyTrend = (transactions: any[], start: Date, end: Date) => {
     const days = [];
     const current = new Date(start);
@@ -198,10 +103,20 @@ const ReportsPage: React.FC = () => {
     return months;
   };
 
-  const downloadCSV = () => {
-    if (!transactions || transactions.length === 0) {
-      toast.error("No transactions to export");
-      return;
+  const reportData = useMemo(() => {
+    // Early return with safe defaults if no accounts or transactions
+    if (!accounts.length || !transactions.length) {
+      return {
+        totalIncome: 0,
+        totalExpenses: 0,
+        netSavings: 0,
+        transactionCount: 0,
+        categoryData: [],
+        accountBreakdown: [],
+        trendData: [],
+        periodStart: new Date(),
+        periodEnd: new Date(),
+      };
     }
 
     const periodStart =
@@ -218,37 +133,136 @@ const ReportsPage: React.FC = () => {
       (t) => t.date >= periodStart && t.date <= periodEnd
     );
 
-    if (periodTransactions.length === 0) {
-      toast.error("No transactions in selected period to export");
+    const totalIncome = periodTransactions
+      .filter((t) => t.type === "income")
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const totalExpenses = periodTransactions
+      .filter((t) => t.type === "expense")
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const netSavings = totalIncome - totalExpenses;
+
+    // Category breakdown with unique keys to prevent React warnings
+    const expenseCategories = periodTransactions
+      .filter((t) => t.type === "expense")
+      .reduce((acc, t) => {
+        const category = t.category || "Uncategorized";
+        acc[category] = (acc[category] || 0) + t.amount;
+        return acc;
+      }, {} as Record<string, number>);
+
+    const categoryData = Object.entries(expenseCategories).map(
+      ([category, amount], index) => ({
+        id: `${category}-${index}`, // Add unique ID to prevent key conflicts
+        name: category,
+        value: amount,
+        percentage:
+          totalExpenses > 0 ? ((amount / totalExpenses) * 100).toFixed(1) : "0",
+      })
+    );
+
+    // Account-wise breakdown
+    const accountBreakdown = accounts.map((account) => {
+      const accountTransactions = periodTransactions.filter(
+        (t) => t.accountId === account.id
+      );
+      const accountIncome = accountTransactions
+        .filter((t) => t.type === "income")
+        .reduce((sum, t) => sum + t.amount, 0);
+      const accountExpenses = accountTransactions
+        .filter((t) => t.type === "expense")
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      return {
+        account: account.name,
+        income: accountIncome,
+        expenses: accountExpenses,
+        net: accountIncome - accountExpenses,
+      };
+    });
+
+    // Daily/Monthly trend
+    const trendData =
+      reportType === "monthly"
+        ? getDailyTrend(periodTransactions, periodStart, periodEnd)
+        : getMonthlyTrend(transactions, selectedPeriod);
+
+    return {
+      totalIncome,
+      totalExpenses,
+      netSavings,
+      transactionCount: periodTransactions.length,
+      categoryData,
+      accountBreakdown,
+      trendData,
+      periodStart,
+      periodEnd,
+    };
+  }, [transactions, accounts, reportType, selectedPeriod]);
+
+  const downloadCSV = () => {
+    if (!transactions || transactions.length === 0) {
+      toast.error("No transactions to export");
       return;
     }
 
-    const csvContent = [
-      ["Date", "Type", "Amount", "Category", "Description", "Account"],
-      ...periodTransactions.map((t) => {
-        const account = accounts.find((a) => a.id === t.accountId);
-        return [
-          format(t.date, "yyyy-MM-dd"),
-          t.type,
-          t.amount,
-          t.category,
-          t.description,
-          account?.name || "Unknown",
-        ];
-      }),
-    ]
-      .map((row) => row.join(","))
-      .join("\n");
+    setDownloading(true);
 
-    const blob = new Blob([csvContent], { type: "text/csv" });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `transactions-${format(selectedPeriod, "yyyy-MM")}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
+    try {
+      const periodStart =
+        reportType === "monthly"
+          ? startOfMonth(selectedPeriod)
+          : startOfYear(selectedPeriod);
 
-    toast.success("CSV downloaded successfully!");
+      const periodEnd =
+        reportType === "monthly"
+          ? endOfMonth(selectedPeriod)
+          : endOfYear(selectedPeriod);
+
+      const periodTransactions = transactions.filter(
+        (t) => t.date >= periodStart && t.date <= periodEnd
+      );
+
+      if (periodTransactions.length === 0) {
+        toast.error("No transactions in selected period to export");
+        return;
+      }
+
+      const csvContent = [
+        ["Date", "Type", "Amount", "Category", "Description", "Account"],
+        ...periodTransactions.map((t) => {
+          const account = accounts.find((a) => a.id === t.accountId);
+          return [
+            format(t.date, "yyyy-MM-dd"),
+            t.type,
+            t.amount,
+            t.category || "Uncategorized",
+            t.description || "",
+            account?.name || "Unknown",
+          ];
+        }),
+      ]
+        .map((row) => row.map((field) => `"${field}"`).join(",")) // Properly escape CSV fields
+        .join("\n");
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `transactions-${format(selectedPeriod, "yyyy-MM")}.csv`;
+      document.body.appendChild(a); // Add to DOM for Firefox compatibility
+      a.click();
+      document.body.removeChild(a); // Clean up
+      window.URL.revokeObjectURL(url);
+
+      toast.success("CSV downloaded successfully!");
+    } catch (error) {
+      console.error("Error downloading CSV:", error);
+      toast.error("Failed to download CSV");
+    } finally {
+      setDownloading(false);
+    }
   };
 
   const COLORS = [
@@ -332,11 +346,11 @@ const ReportsPage: React.FC = () => {
         <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 w-full sm:w-auto">
           <button
             onClick={downloadCSV}
-            disabled={!transactions || transactions.length === 0}
+            disabled={!transactions || transactions.length === 0 || downloading}
             className="bg-gray-600 text-white px-4 lg:px-6 py-2 lg:py-3 rounded-lg font-bold hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
           >
             <Download size={16} className="mr-2" />
-            Download CSV
+            {downloading ? "Downloading..." : "Download CSV"}
           </button>
         </div>
       </div>
@@ -378,6 +392,8 @@ const ReportsPage: React.FC = () => {
                   setSelectedPeriod(new Date(parseInt(e.target.value), 0, 1));
                 }
               }}
+              min={reportType === "yearly" ? "2020" : undefined}
+              max={reportType === "yearly" ? "2030" : undefined}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
@@ -523,7 +539,7 @@ const ReportsPage: React.FC = () => {
                   >
                     {reportData.categoryData.map((entry, index) => (
                       <Cell
-                        key={`cell-${index}`}
+                        key={entry.id} // Use unique ID instead of index
                         fill={COLORS[index % COLORS.length]}
                       />
                     ))}
@@ -636,7 +652,10 @@ const ReportsPage: React.FC = () => {
                   </thead>
                   <tbody>
                     {reportData.accountBreakdown.map((account, index) => (
-                      <tr key={index} className="border-b border-gray-100">
+                      <tr
+                        key={`account-${index}`}
+                        className="border-b border-gray-100"
+                      >
                         <td className="py-3 px-4 font-medium text-gray-900">
                           {account.account}
                         </td>
@@ -669,8 +688,8 @@ const ReportsPage: React.FC = () => {
               Category Breakdown
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {reportData.categoryData.map((category, index) => (
-                <div key={index} className="bg-gray-50 p-4 rounded-lg">
+              {reportData.categoryData.map((category) => (
+                <div key={category.id} className="bg-gray-50 p-4 rounded-lg">
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="font-medium text-gray-900 truncate">
                       {category.name}

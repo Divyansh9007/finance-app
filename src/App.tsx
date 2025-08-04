@@ -1,21 +1,26 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
-import { AuthProvider } from './contexts/AuthContext';
-import { DataProvider } from './contexts/DataContext';
-import LandingPage from './pages/LandingPage';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
-import Dashboard from './pages/Dashboard';
-import TransactionsPage from './pages/TransactionsPage';
-import UploadBillPage from './pages/UploadBillPage';
-import ReportsPage from './pages/ReportsPage';
-import AnalysisPage from './pages/AnalysisPage';
-import InvestmentsPage from './pages/InvestmentsPage';
-import SettingsPage from './pages/SettingsPage';
-import Layout from './components/Layout';
-import ProtectedRoute from './components/ProtectedRoute';
-import './App.css';
+import React from "react";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
+import { Toaster } from "react-hot-toast";
+import { AuthProvider } from "./contexts/AuthContext";
+import { DataProvider } from "./contexts/DataContext";
+import LandingPage from "./pages/LandingPage";
+import LoginPage from "./pages/LoginPage";
+import RegisterPage from "./pages/RegisterPage";
+import Dashboard from "./pages/Dashboard";
+import TransactionsPage from "./pages/TransactionsPage";
+import UploadBillPage from "./pages/UploadBillPage";
+import ReportsPage from "./pages/ReportsPage";
+import AnalysisPage from "./pages/AnalysisPage";
+import InvestmentsPage from "./pages/InvestmentsPage";
+import SettingsPage from "./pages/SettingsPage";
+import Layout from "./components/Layout";
+import ProtectedRoute from "./components/ProtectedRoute";
+import "./App.css";
 
 function App() {
   return (

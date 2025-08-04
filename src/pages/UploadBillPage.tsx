@@ -1,15 +1,24 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { useForm } from "react-hook-form";
-import { Upload, Camera, FileText, Loader, CheckCircle } from "lucide-react";
+import {
+  Upload,
+  Camera,
+  FileText,
+  Loader,
+  CheckCircle,
+  AlertCircle,
+} from "lucide-react";
 import { useData } from "../contexts/DataContext";
 import toast from "react-hot-toast";
+import { extractReceiptData, ExtractedReceiptData } from "../utils/gemini";
 
 interface ExtractedData {
-  vendor?: string;
+  merchantName?: string;
   amount?: number;
   date?: string;
   category?: string;
+  description?: string;
 }
 
 interface TransactionFormData {
@@ -22,14 +31,13 @@ interface TransactionFormData {
   notes?: string;
 }
 
-const UploadBillPage: React.FC = () => {
+const UploadBillPage = () => {
   const { accounts, addTransaction } = useData();
   const [uploading, setUploading] = useState(false);
-  const [extractedData, setExtractedData] = useState<ExtractedData | null>(
-    null
-  );
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [extractedData, setExtractedData] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [extractionError, setExtractionError] = useState(null);
 
   const {
     register,
@@ -37,39 +45,46 @@ const UploadBillPage: React.FC = () => {
     reset,
     setValue,
     formState: { errors },
-  } = useForm<TransactionFormData>();
+  } = useForm();
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (event) => {
     const file = event.target.files?.[0];
     if (file) {
+      const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+      if (!validTypes.includes(file.type)) {
+        toast.error("Please upload a valid image file (JPG, PNG, WEBP)");
+        return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error("File size must be less than 10MB");
+        return;
+      }
       setSelectedFile(file);
+      setExtractedData(null);
+      setExtractionError(null);
       const reader = new FileReader();
       reader.onload = (e) => {
-        setPreview(e.target?.result as string);
+        setPreview(e.target?.result);
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const extractDataFromReceipt = async (file: File): Promise<ExtractedData> => {
-    // Simulate AI extraction process
-    // In a real implementation, you would:
-    // 1. Convert image to base64
-    // 2. Send to Gemini API
-    // 3. Parse the response
-
-    // For demo purposes, we'll simulate the extraction
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
-    // Mock extracted data
-    const mockData: ExtractedData = {
-      vendor: "Sample Store",
-      amount: Math.floor(Math.random() * 1000) + 100,
-      date: new Date().toISOString().split("T")[0],
-      category: "Shopping",
-    };
-
-    return mockData;
+  const scanReceiptWithGemini = async (file) => {
+    try {
+      const data = await extractReceiptData(file);
+      return {
+        merchantName: data.vendor || undefined,
+        amount: data.amount || undefined,
+        date: data.date || undefined,
+        category: data.category || undefined,
+        description: data.items?.join(", ") || data.vendor || undefined,
+      };
+    } catch (error) {
+      throw new Error(
+        error instanceof Error ? error.message : "Failed to scan receipt"
+      );
+    }
   };
 
   const handleExtractData = async () => {
@@ -77,27 +92,66 @@ const UploadBillPage: React.FC = () => {
       toast.error("Please select a file first");
       return;
     }
-
     setUploading(true);
+    setExtractionError(null);
     try {
-      const data = await extractDataFromReceipt(selectedFile);
+      const data = await scanReceiptWithGemini(selectedFile);
+      if (!data || Object.keys(data).length === 0) {
+        throw new Error(
+          "This doesn't appear to be a valid receipt. Please try uploading a clearer image."
+        );
+      }
       setExtractedData(data);
-
-      // Pre-fill the form with extracted data
-      if (data.amount) setValue("amount", data.amount);
-      if (data.date) setValue("date", data.date);
-      if (data.category) setValue("category", data.category);
-      if (data.vendor) setValue("description", data.vendor);
-
+      if (data.amount && data.amount > 0) {
+        setValue("amount", data.amount);
+      }
+      if (data.date) {
+        const dateObj = new Date(data.date);
+        if (!isNaN(dateObj.getTime())) {
+          setValue("date", dateObj.toISOString().split("T")[0]);
+        }
+      }
+      if (data.category) {
+        const categoryMapping = {
+          groceries: "Food & Dining",
+          food: "Food & Dining",
+          transportation: "Transportation",
+          shopping: "Shopping",
+          entertainment: "Entertainment",
+          utilities: "Bills & Utilities",
+          bills: "Bills & Utilities",
+          healthcare: "Healthcare",
+          education: "Education",
+          travel: "Travel",
+          "other-expense": "Others",
+          housing: "Bills & Utilities",
+          insurance: "Bills & Utilities",
+          gifts: "Shopping",
+          personal: "Others",
+        };
+        const mappedCategory =
+          categoryMapping[data.category.toLowerCase()] || data.category;
+        setValue("category", mappedCategory);
+      }
+      if (data.description || data.merchantName) {
+        const description = data.description || data.merchantName || "";
+        setValue("description", description);
+      }
       toast.success("Receipt data extracted successfully!");
     } catch (error) {
-      toast.error("Failed to extract data from receipt");
+      console.error("Receipt scanning error:", error);
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to extract data from receipt";
+      setExtractionError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setUploading(false);
     }
   };
 
-  const onSubmit = async (data: TransactionFormData) => {
+  const onSubmit = async (data) => {
     try {
       await addTransaction({
         ...data,
@@ -105,17 +159,22 @@ const UploadBillPage: React.FC = () => {
         amount: Number(data.amount),
         date: new Date(data.date),
       });
-
-      // Reset form and states
       reset();
       setSelectedFile(null);
       setPreview(null);
       setExtractedData(null);
-
+      setExtractionError(null);
       toast.success("Transaction added successfully!");
     } catch (error) {
       // Error handled by context
     }
+  };
+
+  const clearFile = () => {
+    setSelectedFile(null);
+    setPreview(null);
+    setExtractedData(null);
+    setExtractionError(null);
   };
 
   return (
@@ -129,7 +188,6 @@ const UploadBillPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Upload Section */}
         <div className="space-y-6">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -149,6 +207,16 @@ const UploadBillPage: React.FC = () => {
                     className="max-w-full h-48 object-contain mx-auto rounded-lg"
                   />
                   <p className="text-sm text-gray-600">{selectedFile?.name}</p>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      clearFile();
+                    }}
+                    className="text-sm text-red-600 hover:text-red-700"
+                  >
+                    Remove file
+                  </button>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -160,7 +228,7 @@ const UploadBillPage: React.FC = () => {
                       Drag and drop your receipt, or click to browse
                     </p>
                     <p className="text-sm text-gray-500">
-                      Supports JPG, PNG, PDF files up to 10MB
+                      Supports JPG, PNG, WEBP files up to 10MB
                     </p>
                   </div>
                 </div>
@@ -168,7 +236,7 @@ const UploadBillPage: React.FC = () => {
 
               <input
                 type="file"
-                accept="image/*,.pdf"
+                accept="image/jpeg,image/jpg,image/png,image/webp"
                 onChange={handleFileSelect}
                 className="absolute inset-0 w-full h-full opacity-0"
               />
@@ -197,7 +265,31 @@ const UploadBillPage: React.FC = () => {
             )}
           </motion.div>
 
-          {/* Extracted Data Preview */}
+          {extractionError && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-red-50 border border-red-200 p-6 rounded-2xl"
+            >
+              <div className="flex items-center mb-2">
+                <AlertCircle size={20} className="text-red-600 mr-2" />
+                <h3 className="text-lg font-bold text-red-800">
+                  Extraction Failed
+                </h3>
+              </div>
+              <p className="text-red-700 text-sm mb-4">{extractionError}</p>
+              <div className="text-sm text-red-600">
+                <p className="font-medium mb-2">Tips for better results:</p>
+                <ul className="list-disc list-inside space-y-1">
+                  <li>Ensure the receipt is clearly visible and well-lit</li>
+                  <li>Make sure all text is readable</li>
+                  <li>Avoid blurry or tilted images</li>
+                  <li>Try uploading a higher quality image</li>
+                </ul>
+              </div>
+            </motion.div>
+          )}
+
           {extractedData && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -211,31 +303,45 @@ const UploadBillPage: React.FC = () => {
                 </h3>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-green-700 font-medium">Vendor:</p>
-                  <p className="text-green-800">
-                    {extractedData.vendor || "Not detected"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-green-700 font-medium">Amount:</p>
-                  <p className="text-green-800">
-                    ₹{extractedData.amount || "Not detected"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-green-700 font-medium">Date:</p>
-                  <p className="text-green-800">
-                    {extractedData.date || "Not detected"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-green-700 font-medium">Category:</p>
-                  <p className="text-green-800">
-                    {extractedData.category || "Not detected"}
-                  </p>
-                </div>
+              <div className="grid grid-cols-1 gap-4 text-sm">
+                {extractedData.merchantName && (
+                  <div>
+                    <p className="text-green-700 font-medium">Merchant:</p>
+                    <p className="text-green-800">
+                      {extractedData.merchantName}
+                    </p>
+                  </div>
+                )}
+                {extractedData.amount && (
+                  <div>
+                    <p className="text-green-700 font-medium">Amount:</p>
+                    <p className="text-green-800">
+                      ₹{extractedData.amount.toLocaleString()}
+                    </p>
+                  </div>
+                )}
+                {extractedData.date && (
+                  <div>
+                    <p className="text-green-700 font-medium">Date:</p>
+                    <p className="text-green-800">
+                      {new Date(extractedData.date).toLocaleDateString()}
+                    </p>
+                  </div>
+                )}
+                {extractedData.category && (
+                  <div>
+                    <p className="text-green-700 font-medium">Category:</p>
+                    <p className="text-green-800">{extractedData.category}</p>
+                  </div>
+                )}
+                {extractedData.description && (
+                  <div>
+                    <p className="text-green-700 font-medium">Description:</p>
+                    <p className="text-green-800">
+                      {extractedData.description}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <p className="text-sm text-green-700 mt-4">
@@ -245,7 +351,6 @@ const UploadBillPage: React.FC = () => {
           )}
         </div>
 
-        {/* Form Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -385,7 +490,6 @@ const UploadBillPage: React.FC = () => {
         </motion.div>
       </div>
 
-      {/* Instructions */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -426,6 +530,14 @@ const UploadBillPage: React.FC = () => {
               </p>
             </div>
           </div>
+        </div>
+
+        <div className="mt-4 p-4 bg-blue-100 rounded-lg">
+          <p className="text-sm text-blue-800">
+            <strong>Pro tip:</strong> For best results, ensure your receipt is
+            well-lit, clearly visible, and the text is readable. The AI works
+            best with high-quality, unblurred images.
+          </p>
         </div>
       </motion.div>
     </div>
