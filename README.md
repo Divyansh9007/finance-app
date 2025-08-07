@@ -175,6 +175,16 @@ service cloud.firestore {
 ```bash
 npm run build
 ```
+## Sample Screenshots
+
+### Authentication & Dashboard
+![Dashboard](./ss2/dashboard.png)
+
+### Transaction Management & Receipt Processing
+![Uploading Bill](./ss2/bill.png)
+
+### Investment Portfolio & Reports
+![Analysis](./ss2/analysis.png)
 
 ## Contributing
 
